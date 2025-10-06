@@ -8,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Supabase Client CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,6 +26,9 @@
         .modal-overlay.visible { opacity: 1; visibility: visible; }
         .modal-content { background: white; padding: 2rem; border-radius: 0.5rem; width: 90%; max-width: 500px; transform: translateY(-20px); transition: transform 0.3s ease; }
         .modal-overlay.visible .modal-content { transform: translateY(0); }
+        .spinner { border: 4px solid rgba(0, 0, 0, 0.1); width: 36px; height: 36px; border-radius: 50%; border-left-color: #3b82f6; animation: spin 1s ease infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .paid-row { opacity: 0.5; text-decoration: line-through; }
     </style>
 </head>
 <body class="p-4 sm:p-6 md:p-8">
@@ -59,12 +64,23 @@
         <main id="tab-contents">
             <!-- Aba de Resumo -->
             <div id="resumo" class="tab-content active">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                    <div class="card bg-white p-6 rounded-lg shadow-md border-l-4 border-green-500"><h2 class="text-lg font-semibold text-gray-600">Receitas Totais</h2><p id="total-receitas" class="text-3xl font-bold text-gray-800 mt-2"></p></div>
-                    <div class="card bg-white p-6 rounded-lg shadow-md border-l-4 border-red-500"><h2 class="text-lg font-semibold text-gray-600">Despesas Totais</h2><p id="total-despesas" class="text-3xl font-bold text-gray-800 mt-2"></p></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="card bg-white p-6 rounded-lg shadow-md border-l-4 border-green-500"><h2 class="text-lg font-semibold text-gray-600">Receitas</h2><p id="total-receitas" class="text-3xl font-bold text-gray-800 mt-2"></p></div>
+                    <div class="card bg-white p-6 rounded-lg shadow-md border-l-4 border-red-500"><h2 class="text-lg font-semibold text-gray-600">Despesas Pagas</h2><p id="total-despesas" class="text-3xl font-bold text-gray-800 mt-2"></p></div>
+                    <div class="card bg-white p-6 rounded-lg shadow-md border-l-4 border-yellow-500"><h2 class="text-lg font-semibold text-gray-600">Contas a Pagar</h2><p id="total-a-pagar" class="text-3xl font-bold text-gray-800 mt-2"></p></div>
                     <div class="card bg-white p-6 rounded-lg shadow-md border-l-4 border-blue-500"><h2 class="text-lg font-semibold text-gray-600">Saldo Final</h2><p id="saldo-final" class="text-3xl font-bold text-gray-800 mt-2"></p></div>
                 </div>
-                <div class="bg-white p-6 rounded-lg shadow-md"><h2 class="text-xl font-bold text-gray-800 mb-4">Distribuição de Despesas</h2><div class="max-w-md mx-auto"><canvas id="expensesChart"></canvas></div></div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white p-6 rounded-lg shadow-md"><h2 class="text-xl font-bold text-gray-800 mb-4">Distribuição de Despesas (Previsto)</h2><div class="max-w-md mx-auto"><canvas id="expensesChart"></canvas></div></div>
+                    <div class="bg-white p-6 rounded-lg shadow-md flex flex-col items-center justify-center">
+                        <h2 class="text-xl font-bold text-gray-800 mb-4">Análise Inteligente</h2>
+                        <p class="text-gray-600 text-center mb-6">Receba insights e dicas personalizadas sobre seus gastos mensais com a ajuda da IA do Gemini.</p>
+                        <button id="gemini-analysis-btn" class="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg flex items-center gap-2 transition-transform transform hover:scale-105">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.636-6.364l-.707-.707M12 21v-1m-6.364-1.636l.707-.707M6 6l.707.707"/></svg>
+                            Analisar com Gemini
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <!-- Aba de Gastos Detalhados -->
@@ -89,7 +105,7 @@
                                 <tr>
                                     <th scope="col" class="px-6 py-3">Mês</th>
                                     <th scope="col" class="px-6 py-3 text-right">Receitas</th>
-                                    <th scope="col" class="px-6 py-3 text-right">Despesas</th>
+                                    <th scope="col" class="px-6 py-3 text-right">Despesas Pagas</th>
                                     <th scope="col" class="px-6 py-3 text-right">Saldo</th>
                                 </tr>
                             </thead>
@@ -108,6 +124,10 @@
             <h2 class="text-2xl font-bold mb-4" id="modal-title">Adicionar Lançamento</h2>
             <form id="transaction-form">
                 <input type="hidden" id="transaction-id" name="id">
+                <div class="mb-4">
+                    <label for="transaction-date" class="block text-sm font-medium text-gray-700">Data</label>
+                    <input type="date" id="transaction-date" name="date" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" required>
+                </div>
                 <div class="mb-4">
                     <label for="transaction-type" class="block text-sm font-medium text-gray-700">Tipo</label>
                     <select id="transaction-type" name="type" class="mt-1 block w-full p-2 border border-gray-300 rounded-md">
@@ -149,9 +169,32 @@
         </div>
     </div>
 
-    <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        // --- BANCO DE DADOS INICIAL CORRIGIDO (SETEMBRO/2025) ---
+    <!-- Modal para Resposta do Gemini -->
+    <div id="gemini-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold">Análise Inteligente do Gemini</h2>
+                <button id="gemini-close-btn" class="text-gray-500 hover:text-gray-800 text-2xl font-bold">&times;</button>
+            </div>
+            <div id="gemini-response" class="space-y-4 text-gray-700 max-h-96 overflow-y-auto">
+                <div class="flex justify-center items-center h-32">
+                    <div class="spinner"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        const { createClient } = supabase;
+        
+        // --- SUAS CHAVES DO SUPABASE ---
+        const SUPABASE_URL = 'https://jcuorbbojlctjovefykm.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpjdW9yYmJvamxjdGpvdmVmeWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyODkwNjAsImV4cCI6MjA3NDg2NTA2MH0.TRNtSGJaOprHecbsPJZMDTRa8em8Wd4Qsv9ht0tHTbs';
+        // --------------------------------------------------
+
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // --- BANCO DE DADOS INICIAL (APENAS PARA PRIMEIRA EXECUÇÃO) ---
         const initialData = {
             "2025-09": {
                 receitas: [
@@ -159,377 +202,522 @@
                     { id: 1002, descricao: "SALÁRIO LEIDIANE", valor: 2800.00 }
                 ],
                 despesas: {
-                    "Gastos Casa": [
-                        { id: 1, descricao: "LUZ", valor: 200.31, parcelas: "" },
-                        { id: 2, descricao: "VIVO", valor: 355.00, parcelas: "" },
-                        { id: 3, descricao: "PAINEL", valor: 30.00, parcelas: "" },
-                        { id: 4, descricao: "ÁGUA", valor: 68.64, parcelas: "" }
-                    ],
-                    "Gastos Leandro": [
-                        { id: 5, descricao: "ALURA", valor: 110.00, parcelas: "10/12" },
-                        { id: 6, descricao: "FACULDADE", valor: 356.00, parcelas: "FIXO" },
-                        { id: 7, descricao: "JIU-JITSU", valor: 423.00, parcelas: "FIXO" },
-                        { id: 8, descricao: "CHUTEIRA VITOR", valor: 50.00, parcelas: "04/05" },
-                        { id: 9, descricao: "SHOW", valor: 72.17, parcelas: "02/05" },
-                        { id: 10, descricao: "STEFAN", valor: 108.00, parcelas: "04/04" }
-                    ],
-                    "Gastos Leidiane": [
-                        { id: 11, descricao: "STEFAN", valor: 100.00, parcelas: "01/03" },
-                        { id: 12, descricao: "PAI", valor: 165.00, parcelas: "06/10" },
-                        { id: 13, descricao: "ÓTICA", valor: 103.00, parcelas: "02/05" },
-                        { id: 14, descricao: "C&A", valor: 57.39, parcelas: "02/04" },
-                        { id: 15, descricao: "SHOW", valor: 75.00, parcelas: "02/05" },
-                        { id: 16, descricao: "VALUTI", valor: 55.00, parcelas: "03/05" },
-                        { id: 17, descricao: "JULIANA (UNHA)", valor: 100.00, parcelas: "FIXO" },
-                        { id: 18, descricao: "FACULDADE", valor: 276.38, parcelas: "FIXO" },
-                        { id: 19, descricao: "VALUTI", valor: 90.00, parcelas: "02/04" }
-                    ],
-                    "Cartão BB (Fixos)": [
-                        { id: 20, descricao: "INGLÊS", valor: 29.81, parcelas: "10/12" },
-                        { id: 21, descricao: "TATTO", valor: 101.00, parcelas: "06/10" },
-                        { id: 22, descricao: "KIMONO", valor: 58.33, parcelas: "03/06" },
-                        { id: 23, descricao: "NUTRICIONISTA", valor: 74.50, parcelas: "03/03" },
-                        { id: 24, descricao: "PRESENTE PAIS", valor: 57.50, parcelas: "02/04" }
-                    ],
-                    "Cartão BB (Extras)": [
-                        { id: 25, descricao: "SUPLEMENTO", valor: 90.00, parcelas: "" },
-                        { id: 26, descricao: "PAPA-BOLINHA", valor: 24.99, parcelas: "" },
-                        { id: 27, descricao: "GASOLINA", valor: 100.02, parcelas: "" },
-                        { id: 28, descricao: "C&A", valor: 45.99, parcelas: "" },
-                        { id: 29, descricao: "SORVETE", valor: 46.00, parcelas: "" },
-                        { id: 30, descricao: "MCDONALDS", valor: 157.00, parcelas: "" },
-                        { id: 31, descricao: "SHORT MALU", valor: 70.96, parcelas: "" }
-                    ],
-                    "Cartão Nubank (Fixos)": [
-                        { id: 32, descricao: "WEGOVY", valor: 112.00, parcelas: "05/10" },
-                        { id: 33, descricao: "FONE", valor: 52.59, parcelas: "01/04" },
-                        { id: 34, descricao: "SHOPPING ORIENTE", valor: 54.66, parcelas: "03/03" },
-                        { id: 35, descricao: "CELULAR MALU", valor: 84.03, parcelas: "01/02" },
-                        { id: 36, descricao: "GAMEPASS", valor: 59.99, parcelas: "FIXO" },
-                        { id: 37, descricao: "GOOGLE(NUVEM)", valor: 2.49, parcelas: "FIXO" },
-                        { id: 38, descricao: "PENTEADEIRA", valor: 110.81, parcelas: "02/03" },
-                        { id: 39, descricao: "GYMPASS", valor: 120.00, parcelas: "FIXO" }
-                    ],
-                    "Cartão Nubank (Extras)": [
-                        { id: 40, descricao: "GASOLINA", valor: 100.00, parcelas: "" },
-                        { id: 41, descricao: "RAÇÃO", valor: 50.00, parcelas: "" },
-                        { id: 42, descricao: "ROSALINA", valor: 165.72, parcelas: "" },
-                        { id: 43, descricao: "TERRAÇO", valor: 381.16, parcelas: "" },
-                        { id: 44, descricao: "BUSCA-BUSCA", valor: 53.04, parcelas: "" },
-                        { id: 45, descricao: "MERCADINHO", valor: 17.19, parcelas: "" },
-                        { id: 46, descricao: "BARBOZA", valor: 263.76, parcelas: "" },
-                        { id: 47, descricao: "SOBRANCELHA", valor: 38.11, parcelas: "" }
-                    ]
+                    "Gastos Casa": [ { id: 1, descricao: "LUZ", valor: 200.31, parcelas: "", pago: true }, { id: 2, descricao: "VIVO", valor: 355.00, parcelas: "", pago: true }, { id: 3, descricao: "PAINEL", valor: 30.00, parcelas: "", pago: true }, { id: 4, descricao: "ÁGUA", valor: 68.64, parcelas: "", pago: true }],
+                    "Gastos Leandro": [ { id: 5, descricao: "ALURA", valor: 110.00, parcelas: "10/12", pago: true }, { id: 6, descricao: "FACULDADE", valor: 356.00, parcelas: "FIXO", pago: true }, { id: 7, descricao: "JIU-JITSU", valor: 423.00, parcelas: "FIXO", pago: true }, { id: 8, descricao: "CHUTEIRA VITOR", valor: 50.00, parcelas: "04/05", pago: true }, { id: 9, descricao: "SHOW", valor: 72.17, parcelas: "02/05", pago: true }, { id: 10, descricao: "STEFAN", valor: 108.00, parcelas: "04/04", pago: true }],
+                    "Gastos Leidiane": [ { id: 11, descricao: "STEFAN", valor: 100.00, parcelas: "01/03", pago: true }, { id: 12, descricao: "PAI", valor: 165.00, parcelas: "06/10", pago: true }, { id: 13, descricao: "ÓTICA", valor: 103.00, parcelas: "02/05", pago: true }, { id: 14, descricao: "C&A", valor: 57.39, parcelas: "02/04", pago: true }, { id: 15, descricao: "SHOW", valor: 75.00, parcelas: "02/05", pago: true }, { id: 16, descricao: "VALUTI", valor: 55.00, parcelas: "03/05", pago: true }, { id: 17, descricao: "JULIANA (UNHA)", valor: 100.00, parcelas: "FIXO", pago: true }, { id: 18, descricao: "FACULDADE", valor: 276.38, parcelas: "FIXO", pago: true }, { id: 19, descricao: "VALUTI", valor: 90.00, parcelas: "02/04", pago: true }],
+                    "Cartão BB (Fixos)": [ { id: 20, descricao: "INGLÊS", valor: 29.81, parcelas: "10/12", pago: true }, { id: 21, descricao: "TATTO", valor: 101.00, parcelas: "06/10", pago: true }, { id: 22, descricao: "KIMONO", valor: 58.33, parcelas: "03/06", pago: true }, { id: 23, descricao: "NUTRICIONISTA", valor: 74.50, parcelas: "03/03", pago: true }, { id: 24, descricao: "PRESENTE PAIS", valor: 57.50, parcelas: "02/04", pago: true }],
+                    "Cartão BB (Extras)": [ { id: 25, descricao: "SUPLEMENTO", valor: 90.00, parcelas: "", pago: true }, { id: 26, descricao: "PAPA-BOLINHA", valor: 24.99, parcelas: "", pago: true }, { id: 27, descricao: "GASOLINA", valor: 100.02, parcelas: "", pago: true }, { id: 28, descricao: "C&A", valor: 45.99, parcelas: "", pago: true }, { id: 29, descricao: "SORVETE", valor: 46.00, parcelas: "", pago: true }, { id: 30, descricao: "MCDONALDS", valor: 157.00, parcelas: "", pago: true }, { id: 31, descricao: "SHORT MALU", valor: 70.96, parcelas: "", pago: true }],
+                    "Cartão Nubank (Fixos)": [ { id: 32, descricao: "WEGOVY", valor: 112.00, parcelas: "05/10", pago: true }, { id: 33, descricao: "FONE", valor: 52.59, parcelas: "01/04", pago: true }, { id: 34, descricao: "SHOPPING ORIENTE", valor: 54.66, parcelas: "03/03", pago: true }, { id: 35, descricao: "CELULAR MALU", valor: 84.03, parcelas: "01/02", pago: true }, { id: 36, descricao: "GAMEPASS", valor: 59.99, parcelas: "FIXO", pago: true }, { id: 37, descricao: "GOOGLE(NUVEM)", valor: 2.49, parcelas: "FIXO", pago: true }, { id: 38, descricao: "PENTEADEIRA", valor: 110.81, parcelas: "02/03", pago: true }, { id: 39, descricao: "GYMPASS", valor: 120.00, parcelas: "FIXO", pago: true }],
+                    "Cartão Nubank (Extras)": [ { id: 40, descricao: "GASOLINA", valor: 100.00, parcelas: "", pago: true }, { id: 41, descricao: "RAÇÃO", valor: 50.00, parcelas: "", pago: true }, { id: 42, descricao: "ROSALINA", valor: 165.72, parcelas: "", pago: true }, { id: 43, descricao: "TERRAÇO", valor: 381.16, parcelas: "", pago: true }, { id: 44, descricao: "BUSCA-BUSCA", valor: 53.04, parcelas: "", pago: true }, { id: 45, descricao: "MERCADINHO", valor: 17.19, parcelas: "", pago: true }, { id: 46, descricao: "BARBOZA", valor: 263.76, parcelas: "", pago: true }, { id: 47, descricao: "SOBRANCELHA", valor: 38.11, parcelas: "", pago: true }]
                 }
             }
         };
-
-        let financialData = {};
-        let chartInstance = null;
-        const monthSelector = document.getElementById('month-selector');
-
-        const loadData = () => {
-            const savedData = localStorage.getItem('financialDashboardData');
-            if (savedData) {
-                financialData = JSON.parse(savedData);
-            } else {
-                financialData = JSON.parse(JSON.stringify(initialData)); // Deep copy
-                saveData();
-            }
-        };
-
-        const saveData = () => {
-            localStorage.setItem('financialDashboardData', JSON.stringify(financialData));
-        };
-
-        const formatCurrency = (value) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         
-        const renderDashboard = (monthKey) => {
-            const monthData = financialData[monthKey];
-            if (!monthData) return;
-
-            const totalReceitas = (monthData.receitas || []).reduce((sum, item) => sum + item.valor, 0);
-            const totalDespesas = Object.values(monthData.despesas || {}).flat().reduce((sum, item) => sum + item.valor, 0);
-            const saldoFinal = totalReceitas - totalDespesas;
+        document.addEventListener('DOMContentLoaded', () => {
+            let financialData = {};
+            let chartInstance = null;
+            const monthSelector = document.getElementById('month-selector');
             
-            document.getElementById('total-receitas').textContent = formatCurrency(totalReceitas);
-            document.getElementById('total-despesas').textContent = formatCurrency(totalDespesas);
-            const saldoEl = document.getElementById('saldo-final');
-            saldoEl.textContent = formatCurrency(saldoFinal);
-            saldoEl.classList.toggle('text-red-500', saldoFinal < 0);
-            saldoEl.classList.toggle('text-gray-800', saldoFinal >= 0);
+            const loadAndListen = async () => {
+                const { data: initialMonths, error } = await supabaseClient.from('months').select('*');
 
-            renderChart(monthData.despesas || {});
-            renderTables(monthData.despesas || {});
-            renderHistoryTable();
-        };
-        
-        const renderChart = (despesas) => {
-            const ctx = document.getElementById('expensesChart').getContext('2d');
-            const categoryTotals = Object.keys(despesas).map(cat => ({
-                category: cat,
-                total: despesas[cat].reduce((sum, item) => sum + item.valor, 0)
-            })).filter(c => c.total > 0);
+                if (error) {
+                    let userMessage = `Erro ao carregar dados: ${error.message}.`;
+                    if (error.code === '42P01' || error.message.includes("does not exist")) {
+                        userMessage += "\n\nA tabela 'months' não foi encontrada. Siga o guia 'Configuração Automatizada' e execute o script SQL no Supabase.";
+                    } else if (error.code === '42501' || error.message.includes("permission denied")) {
+                        userMessage += "\n\nAcesso negado. Siga o guia 'Configuração Automatizada' para garantir que as políticas de acesso (RLS) foram criadas.";
+                    }
+                    console.error('Erro detalhado:', error);
+                    alert(userMessage);
+                    return;
+                }
 
-            if (chartInstance) chartInstance.destroy();
-            chartInstance = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: categoryTotals.map(d => d.category),
-                    datasets: [{
-                        data: categoryTotals.map(d => d.total),
-                        backgroundColor: ['#ef4444', '#3b82f6', '#10b981', '#f97316', '#8b5cf6', '#ec4899', '#f59e0b', '#6b7280'],
-                        hoverOffset: 4,
-                        borderColor: '#f3f4f6',
-                        borderWidth: 2,
-                    }]
-                },
-                options: { responsive: true, plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: (c) => `${c.label}: ${formatCurrency(c.parsed)}` } } } }
-            });
-        };
+                if (initialMonths.length === 0) {
+                    console.log('Banco de dados vazio. Populando...');
+                    const initialDataToInsert = Object.entries(initialData).map(([id, data]) => ({ id, data }));
+                    const { error: insertError } = await supabaseClient.from('months').insert(initialDataToInsert);
+                    
+                    if(insertError) {
+                        console.error('Erro ao popular dados iniciais:', insertError);
+                        alert('Erro ao salvar os dados iniciais. Verifique o console e as regras de acesso (RLS) da sua tabela no Supabase.');
+                        return;
+                    }
+                    financialData = initialData;
+                    updateUI();
 
-        const renderTables = (despesas) => {
-            const gastosDetalhadosContainer = document.getElementById('detalhados');
-            const cartoesGridContainer = document.getElementById('cartoes-grid');
-            gastosDetalhadosContainer.innerHTML = '';
-            cartoesGridContainer.innerHTML = '';
-            
-            Object.entries(despesas).forEach(([category, items]) => {
-                if(items.length === 0) return;
-
-                const totalCategory = items.reduce((sum, i) => sum + i.valor, 0);
-                const tableRows = items.map(item => {
-                    const transactionData = JSON.stringify({ ...item, category });
-                    return `
-                    <tr class="border-b dark:border-neutral-500 hover:bg-gray-50 group">
-                        <td class="whitespace-nowrap px-6 py-3 cursor-pointer" onclick='window.openEditModal(${transactionData})'>${item.descricao}</td>
-                        <td class="whitespace-nowrap px-6 py-3 cursor-pointer" onclick='window.openEditModal(${transactionData})'>${item.parcelas || '—'}</td>
-                        <td class="whitespace-nowrap px-6 py-3 text-right cursor-pointer" onclick='window.openEditModal(${transactionData})'>${formatCurrency(item.valor)}</td>
-                        <td class="whitespace-nowrap w-12 px-2 py-3 text-center">
-                            <button onclick="deleteItem(${item.id}, '${category}')" title="Excluir item" class="text-gray-400 hover:text-red-600 font-bold text-xl leading-none p-1 rounded-full opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity">
-                                &times;
-                            </button>
-                        </td>
-                    </tr>
-                `}).join('');
-
-                const tableHTML = `
-                    <div class="bg-white p-6 rounded-lg shadow-md">
-                        <h2 class="text-xl font-bold text-gray-800 mb-4">${category}</h2>
-                        <div class="overflow-x-auto">
-                            <table class="min-w-full text-left text-sm font-light">
-                                <thead class="border-b font-medium dark:border-neutral-500">
-                                    <tr>
-                                        <th scope="col" class="px-6 py-3">Descrição</th>
-                                        <th scope="col" class="px-6 py-3">Parcelas</th>
-                                        <th scope="col" class="px-6 py-3 text-right">Valor</th>
-                                        <th scope="col" class="w-12 px-2 py-3"><span class="sr-only">Ações</span></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${tableRows}
-                                    <tr class="font-bold bg-gray-50">
-                                        <td class="px-6 py-3" colspan="2">TOTAL</td>
-                                        <td class="px-6 py-3 text-right">${formatCurrency(totalCategory)}</td>
-                                        <td></td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>`;
-                
-                if (category.toLowerCase().includes('cartão')) {
-                    cartoesGridContainer.innerHTML += tableHTML;
                 } else {
-                    gastosDetalhadosContainer.innerHTML += tableHTML;
+                    financialData = initialMonths.reduce((acc, month) => {
+                        acc[month.id] = month.data;
+                        return acc;
+                    }, {});
+                    updateUI();
                 }
-            });
-        };
-        
-        const renderHistoryTable = () => {
-            const tableBody = document.getElementById('history-table-body');
-            tableBody.innerHTML = '';
-            const sortedMonths = Object.keys(financialData).sort();
 
-            sortedMonths.forEach(monthKey => {
+                supabaseClient.channel('table-db-changes')
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'months' }, (payload) => {
+                        console.log('Alteração recebida!', payload);
+                        const changedData = payload.new;
+                        if (payload.eventType === 'DELETE') {
+                            const oldId = payload.old.id;
+                            if (oldId && financialData[oldId]) {
+                                delete financialData[oldId];
+                            }
+                        } else if (changedData) {
+                            financialData[changedData.id] = changedData.data;
+                        }
+                        updateUI();
+                    })
+                    .subscribe();
+            };
+
+            const updateUI = () => {
+                const currentMonth = monthSelector.value || Object.keys(financialData).sort().reverse()[0];
+                populateMonthSelector();
+                monthSelector.value = currentMonth;
+                if (monthSelector.value) {
+                    renderDashboard(monthSelector.value);
+                }
+            };
+            
+            const saveMonthData = async (monthKey) => {
+                const { error } = await supabaseClient.from('months').upsert({ id: monthKey, data: financialData[monthKey] });
+                if (error) console.error("Erro ao salvar dados:", error);
+            };
+            
+            const formatCurrency = (value) => typeof value === 'number' ? value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ 0,00';
+            
+            const renderDashboard = (monthKey) => {
                 const monthData = financialData[monthKey];
+                if (!monthData) return;
+
+                const allExpenses = Object.values(monthData.despesas || {}).flat();
+                const paidExpenses = allExpenses.filter(item => item.pago);
+                const unpaidExpenses = allExpenses.filter(item => !item.pago);
+
                 const totalReceitas = (monthData.receitas || []).reduce((sum, item) => sum + item.valor, 0);
-                const totalDespesas = Object.values(monthData.despesas || {}).flat().reduce((sum, item) => sum + item.valor, 0);
-                const saldo = totalReceitas - totalDespesas;
+                const totalDespesasPagas = paidExpenses.reduce((sum, item) => sum + item.valor, 0);
+                const totalAPagar = unpaidExpenses.reduce((sum, item) => sum + item.valor, 0);
+                const saldoFinal = totalReceitas - totalDespesasPagas;
+                
+                document.getElementById('total-receitas').textContent = formatCurrency(totalReceitas);
+                document.getElementById('total-despesas').textContent = formatCurrency(totalDespesasPagas);
+                document.getElementById('total-a-pagar').textContent = formatCurrency(totalAPagar);
+                const saldoEl = document.getElementById('saldo-final');
+                saldoEl.textContent = formatCurrency(saldoFinal);
+                saldoEl.classList.toggle('text-red-500', saldoFinal < 0);
+                saldoEl.classList.toggle('text-gray-800', saldoFinal >= 0);
 
-                const row = `
-                    <tr class="border-b dark:border-neutral-500">
-                        <td class="whitespace-nowrap px-6 py-3 font-medium">${monthKey}</td>
-                        <td class="whitespace-nowrap px-6 py-3 text-right text-green-600">${formatCurrency(totalReceitas)}</td>
-                        <td class="whitespace-nowrap px-6 py-3 text-right text-red-600">${formatCurrency(totalDespesas)}</td>
-                        <td class="whitespace-nowrap px-6 py-3 text-right font-bold ${saldo < 0 ? 'text-red-600' : 'text-gray-800'}">${formatCurrency(saldo)}</td>
-                    </tr>`;
-                tableBody.innerHTML += row;
-            });
-        };
-        
-        const populateMonthSelector = () => {
-            const sortedMonths = Object.keys(financialData).sort().reverse();
-            const currentSelection = monthSelector.value;
-            monthSelector.innerHTML = '';
-            sortedMonths.forEach(monthKey => {
-                const [year, month] = monthKey.split('-');
-                const monthName = new Date(year, parseInt(month) - 1, 2).toLocaleString('pt-BR', { month: 'long', timeZone: 'UTC' });
-                const option = document.createElement('option');
-                option.value = monthKey;
-                option.textContent = `${monthName.charAt(0).toUpperCase() + monthName.slice(1)} de ${year}`;
-                monthSelector.appendChild(option);
-            });
-            if (sortedMonths.includes(currentSelection)) {
-                monthSelector.value = currentSelection;
-            }
-        };
+                renderChart(monthData.despesas || {});
+                renderTables(monthData.receitas || [], monthData.despesas || {});
+                renderHistoryTable();
+            };
+            
+            const renderChart = (despesas) => {
+                if (typeof Chart === 'undefined') return;
+                const ctx = document.getElementById('expensesChart').getContext('2d');
+                const categoryTotals = Object.keys(despesas).map(cat => ({
+                    category: cat,
+                    total: despesas[cat].reduce((sum, item) => sum + item.valor, 0)
+                })).filter(c => c.total > 0);
 
-        window.deleteItem = (id, category) => {
-            const monthKey = monthSelector.value;
-            const monthData = financialData[monthKey];
+                if (chartInstance) chartInstance.destroy();
+                chartInstance = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: categoryTotals.map(d => d.category),
+                        datasets: [{
+                            data: categoryTotals.map(d => d.total),
+                            backgroundColor: ['#ef4444', '#3b82f6', '#10b981', '#f97316', '#8b5cf6', '#ec4899', '#f59e0b', '#6b7280'],
+                            hoverOffset: 4,
+                            borderColor: '#f3f4f6',
+                            borderWidth: 2,
+                        }]
+                    },
+                    options: { responsive: true, plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: (c) => `${c.label}: ${formatCurrency(c.parsed)}` } } } }
+                });
+            };
 
-            if (monthData && monthData.despesas && monthData.despesas[category]) {
-                monthData.despesas[category] = monthData.despesas[category].filter(item => item.id !== id);
-                saveData();
-                renderDashboard(monthKey);
-            }
-        };
-        
-        const modal = document.getElementById('transaction-modal');
-        const addBtn = document.getElementById('add-transaction-btn');
-        const cancelBtn = document.getElementById('cancel-btn');
-        const deleteBtn = document.getElementById('delete-btn');
-        const form = document.getElementById('transaction-form');
-        const typeSelect = document.getElementById('transaction-type');
-        
-        const closeModal = () => {
-            modal.classList.remove('visible');
-            form.reset();
-            document.getElementById('transaction-id').value = '';
-            document.getElementById('modal-title').textContent = 'Adicionar Lançamento';
-            deleteBtn.classList.add('hidden');
-        };
+            const renderTables = (receitas, despesas) => {
+                const gastosDetalhadosContainer = document.getElementById('detalhados');
+                const cartoesGridContainer = document.getElementById('cartoes-grid');
+                gastosDetalhadosContainer.innerHTML = '';
+                cartoesGridContainer.innerHTML = '';
 
-        window.openEditModal = (transaction) => {
-            form.reset();
-            document.getElementById('modal-title').textContent = 'Editar Lançamento';
+                // Render Revenue Table
+                if(receitas && receitas.length > 0) {
+                    const totalRevenue = receitas.reduce((sum, i) => sum + i.valor, 0);
+                    const revenueRows = receitas.map(item => {
+                        const transactionData = JSON.stringify(item);
+                        return `
+                        <tr class="border-b dark:border-neutral-500 hover:bg-gray-50 group">
+                            <td class="whitespace-nowrap px-6 py-3 cursor-pointer" onclick='window.openEditModal(${transactionData})'>${item.descricao}</td>
+                            <td class="whitespace-nowrap px-6 py-3 text-right cursor-pointer" onclick='window.openEditModal(${transactionData})'>${formatCurrency(item.valor)}</td>
+                            <td class="whitespace-nowrap w-12 px-2 py-3 text-center">
+                                <button onclick="window.deleteItem(${item.id}, null)" title="Excluir item" class="text-gray-400 hover:text-red-600 font-bold text-xl leading-none p-1 rounded-full opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity">
+                                    &times;
+                                </button>
+                            </td>
+                        </tr>
+                    `}).join('');
 
-            document.getElementById('transaction-id').value = transaction.id;
-            document.getElementById('transaction-description').value = transaction.descricao;
-            document.getElementById('transaction-amount').value = transaction.valor;
+                    const revenueTableHTML = `
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <h2 class="text-xl font-bold text-gray-800 mb-4">Receitas</h2>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full text-left text-sm font-light">
+                                    <thead class="border-b font-medium dark:border-neutral-500">
+                                        <tr>
+                                            <th scope="col" class="px-6 py-3">Descrição</th>
+                                            <th scope="col" class="px-6 py-3 text-right">Valor</th>
+                                            <th scope="col" class="w-12 px-2 py-3"><span class="sr-only">Ações</span></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${revenueRows}
+                                        <tr class="font-bold bg-gray-50">
+                                            <td class="px-6 py-3">TOTAL</td>
+                                            <td class="px-6 py-3 text-right">${formatCurrency(totalRevenue)}</td>
+                                            <td></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>`;
+                    gastosDetalhadosContainer.innerHTML += revenueTableHTML;
+                }
+                
+                Object.entries(despesas).forEach(([category, items]) => {
+                    if(!items || items.length === 0) return;
 
-            if (transaction.category) { // É despesa
-                document.getElementById('transaction-type').value = 'despesa';
+                    const totalCategory = items.reduce((sum, i) => sum + i.valor, 0);
+                    const tableRows = items.map(item => {
+                        const transactionData = JSON.stringify({ ...item, category });
+                        const isPaid = item.pago ? 'checked' : '';
+                        const rowClass = item.pago ? 'paid-row' : '';
+                        
+                        return `
+                        <tr class="border-b dark:border-neutral-500 hover:bg-gray-50 group ${rowClass}">
+                            <td class="whitespace-nowrap w-12 px-2 py-3 text-center">
+                                <input type="checkbox" ${isPaid} onchange="window.togglePaidStatus(${item.id}, '${category}')" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer">
+                            </td>
+                            <td class="whitespace-nowrap px-6 py-3 cursor-pointer" onclick='window.openEditModal(${transactionData})'>${item.descricao}</td>
+                            <td class="whitespace-nowrap px-6 py-3 cursor-pointer" onclick='window.openEditModal(${transactionData})'>${item.parcelas || '—'}</td>
+                            <td class="whitespace-nowrap px-6 py-3 text-right cursor-pointer" onclick='window.openEditModal(${transactionData})'>${formatCurrency(item.valor)}</td>
+                            <td class="whitespace-nowrap w-12 px-2 py-3 text-center">
+                                <button onclick="window.deleteItem(${item.id}, '${category}')" title="Excluir item" class="text-gray-400 hover:text-red-600 font-bold text-xl leading-none p-1 rounded-full opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity">
+                                    &times;
+                                </button>
+                            </td>
+                        </tr>
+                    `}).join('');
+
+                    const tableHTML = `
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <h2 class="text-xl font-bold text-gray-800 mb-4">${category}</h2>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full text-left text-sm font-light">
+                                    <thead class="border-b font-medium dark:border-neutral-500">
+                                        <tr>
+                                            <th scope="col" class="w-12 px-2 py-3"><span class="sr-only">Pago</span></th>
+                                            <th scope="col" class="px-6 py-3">Descrição</th>
+                                            <th scope="col" class="px-6 py-3">Parcelas</th>
+                                            <th scope="col" class="px-6 py-3 text-right">Valor</th>
+                                            <th scope="col" class="w-12 px-2 py-3"><span class="sr-only">Ações</span></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${tableRows}
+                                        <tr class="font-bold bg-gray-50">
+                                            <td class="px-6 py-3" colspan="3">TOTAL</td>
+                                            <td class="px-6 py-3 text-right">${formatCurrency(totalCategory)}</td>
+                                            <td></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>`;
+                    
+                    if (category.toLowerCase().includes('cartão')) {
+                        cartoesGridContainer.innerHTML += tableHTML;
+                    } else {
+                        gastosDetalhadosContainer.innerHTML += tableHTML;
+                    }
+                });
+            };
+            
+            const renderHistoryTable = () => {
+                const tableBody = document.getElementById('history-table-body');
+                tableBody.innerHTML = '';
+                const sortedMonths = Object.keys(financialData).sort();
+
+                sortedMonths.forEach(monthKey => {
+                    const monthData = financialData[monthKey];
+                    const totalReceitas = (monthData.receitas || []).reduce((sum, item) => sum + item.valor, 0);
+                    const totalDespesasPagas = Object.values(monthData.despesas || {}).flat().filter(i => i.pago).reduce((sum, item) => sum + item.valor, 0);
+                    const saldo = totalReceitas - totalDespesasPagas;
+
+                    const row = `
+                        <tr class="border-b dark:border-neutral-500">
+                            <td class="whitespace-nowrap px-6 py-3 font-medium">${monthKey}</td>
+                            <td class="whitespace-nowrap px-6 py-3 text-right text-green-600">${formatCurrency(totalReceitas)}</td>
+                            <td class="whitespace-nowrap px-6 py-3 text-right text-red-600">${formatCurrency(totalDespesasPagas)}</td>
+                            <td class="whitespace-nowrap px-6 py-3 text-right font-bold ${saldo < 0 ? 'text-red-600' : 'text-gray-800'}">${formatCurrency(saldo)}</td>
+                        </tr>`;
+                    tableBody.innerHTML += row;
+                });
+            };
+            
+            const populateMonthSelector = () => {
+                const sortedMonths = Object.keys(financialData).sort().reverse();
+                const currentSelection = monthSelector.value;
+                monthSelector.innerHTML = '';
+                sortedMonths.forEach(monthKey => {
+                    const [year, month] = monthKey.split('-');
+                    const monthName = new Date(year, parseInt(month) - 1, 2).toLocaleString('pt-BR', { month: 'long', timeZone: 'UTC' });
+                    const option = document.createElement('option');
+                    option.value = monthKey;
+                    option.textContent = `${monthName.charAt(0).toUpperCase() + monthName.slice(1)} de ${year}`;
+                    monthSelector.appendChild(option);
+                });
+                if (sortedMonths.includes(currentSelection)) {
+                    monthSelector.value = currentSelection;
+                }
+            };
+
+            window.togglePaidStatus = async (id, category) => {
+                const monthKey = monthSelector.value;
+                const monthData = financialData[monthKey];
+                const item = monthData.despesas[category].find(i => i.id === id);
+                if (item) {
+                    item.pago = !item.pago;
+                    await saveMonthData(monthKey);
+                }
+            };
+
+            window.deleteItem = async (id, category) => {
+                const monthKey = monthSelector.value;
+                const monthData = financialData[monthKey];
+                let itemFoundAndRemoved = false;
+
+                if (category) { // It's an expense
+                    if (monthData && monthData.despesas && monthData.despesas[category]) {
+                        const initialLength = monthData.despesas[category].length;
+                        monthData.despesas[category] = monthData.despesas[category].filter(item => item.id !== id);
+                        if (monthData.despesas[category].length < initialLength) itemFoundAndRemoved = true;
+                    }
+                } else { // It's a revenue
+                     if (monthData && monthData.receitas) {
+                        const initialLength = monthData.receitas.length;
+                        monthData.receitas = monthData.receitas.filter(item => item.id !== id);
+                        if (monthData.receitas.length < initialLength) itemFoundAndRemoved = true;
+                    }
+                }
+
+                if(itemFoundAndRemoved) {
+                    await saveMonthData(monthKey);
+                }
+            };
+            
+            const modal = document.getElementById('transaction-modal');
+            const addBtn = document.getElementById('add-transaction-btn');
+            const cancelBtn = document.getElementById('cancel-btn');
+            const deleteBtn = document.getElementById('delete-btn');
+            const form = document.getElementById('transaction-form');
+            const typeSelect = document.getElementById('transaction-type');
+            
+            const closeModal = () => {
+                modal.classList.remove('visible');
+                form.reset();
+                document.getElementById('transaction-id').value = '';
+                document.getElementById('modal-title').textContent = 'Adicionar Lançamento';
+                deleteBtn.classList.add('hidden');
+            };
+
+            window.openEditModal = (transaction) => {
+                form.reset();
+                document.getElementById('modal-title').textContent = 'Editar Lançamento';
+                document.getElementById('transaction-id').value = transaction.id;
+                document.getElementById('transaction-description').value = transaction.descricao;
+                document.getElementById('transaction-amount').value = transaction.valor;
+
+                let transactionMonthKey = '';
+                for (const monthKey in financialData) {
+                    const monthData = financialData[monthKey];
+                    const allItems = [...(monthData.receitas || []), ...Object.values(monthData.despesas || {}).flat()];
+                    if (allItems.some(item => item.id === transaction.id)) {
+                        transactionMonthKey = monthKey;
+                        break;
+                    }
+                }
+                document.getElementById('transaction-date').value = `${transactionMonthKey}-01`;
+
+
+                if (transaction.category) { // É despesa
+                    document.getElementById('transaction-type').value = 'despesa';
+                    document.getElementById('category-wrapper').style.display = 'block';
+                    document.getElementById('installments-wrapper').style.display = 'block';
+                    document.getElementById('transaction-category').value = transaction.category;
+                    document.getElementById('transaction-installments').value = transaction.parcelas || '';
+                } else { // É receita
+                    document.getElementById('transaction-type').value = 'receita';
+                    document.getElementById('category-wrapper').style.display = 'none';
+                    document.getElementById('installments-wrapper').style.display = 'none';
+                }
+                deleteBtn.classList.remove('hidden');
+                modal.classList.add('visible');
+            };
+
+            addBtn.addEventListener('click', () => {
+                form.reset();
+                document.getElementById('modal-title').textContent = 'Adicionar Lançamento';
+                typeSelect.value = 'despesa';
                 document.getElementById('category-wrapper').style.display = 'block';
                 document.getElementById('installments-wrapper').style.display = 'block';
-                document.getElementById('transaction-category').value = transaction.category;
-                document.getElementById('transaction-installments').value = transaction.parcelas || '';
-            } else { // É receita
-                document.getElementById('transaction-type').value = 'receita';
-                document.getElementById('category-wrapper').style.display = 'none';
-                document.getElementById('installments-wrapper').style.display = 'none';
-            }
-            deleteBtn.classList.remove('hidden');
-            modal.classList.add('visible');
-        };
-
-        addBtn.addEventListener('click', () => {
-            form.reset();
-            document.getElementById('modal-title').textContent = 'Adicionar Lançamento';
-            typeSelect.value = 'despesa';
-            document.getElementById('category-wrapper').style.display = 'block';
-            document.getElementById('installments-wrapper').style.display = 'block';
-            modal.classList.add('visible');
-
-        });
-
-        cancelBtn.addEventListener('click', closeModal);
-        modal.addEventListener('click', (e) => e.target === modal && closeModal());
-        
-        typeSelect.addEventListener('change', (e) => {
-            const isExpense = e.target.value === 'despesa';
-            document.getElementById('category-wrapper').style.display = isExpense ? 'block' : 'none';
-            document.getElementById('installments-wrapper').style.display = isExpense ? 'block' : 'none';
-        });
-        
-        form.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const formData = new FormData(form);
-            const data = Object.fromEntries(formData.entries());
-            const monthKey = monthSelector.value;
-            const id = data.id ? parseInt(data.id) : Date.now();
-
-            const monthData = financialData[monthKey];
-
-            // Remove o item antigo se for uma edição
-            if (data.id) {
-                monthData.receitas = monthData.receitas.filter(item => item.id !== id);
-                Object.keys(monthData.despesas).forEach(cat => {
-                    monthData.despesas[cat] = monthData.despesas[cat].filter(item => item.id !== id);
-                });
-            }
-
-            if(data.type === 'receita') {
-                monthData.receitas.push({ id, descricao: data.description, valor: parseFloat(data.amount) });
-            } else {
-                const category = data.category;
-                if (!monthData.despesas[category]) monthData.despesas[category] = [];
-                monthData.despesas[category].push({ 
-                    id, 
-                    descricao: data.description, 
-                    valor: parseFloat(data.amount),
-                    parcelas: data.installments || ''
-                });
-            }
-            
-            saveData();
-            renderDashboard(monthKey);
-            closeModal();
-        });
-
-        deleteBtn.addEventListener('click', () => {
-            const id = parseInt(document.getElementById('transaction-id').value);
-            if(!id) return;
-            
-            const monthKey = monthSelector.value;
-            const monthData = financialData[monthKey];
-
-            monthData.receitas = monthData.receitas.filter(item => item.id !== id);
-            Object.keys(monthData.despesas).forEach(cat => {
-                monthData.despesas[cat] = monthData.despesas[cat].filter(item => item.id !== id);
+                document.getElementById('transaction-date').valueAsDate = new Date(); // Padrão para data atual
+                modal.classList.add('visible');
             });
 
-            saveData();
-            renderDashboard(monthKey);
-            closeModal();
-        });
-        
-        // --- NAVEGAÇÃO POR ABAS ---
-        const tabsContainer = document.getElementById('tabs');
-        tabsContainer.addEventListener('click', (e) => {
-            const clickedTab = e.target.closest('.tab-btn');
-            if (!clickedTab) return;
-            tabsContainer.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            clickedTab.classList.add('active');
-            document.getElementById(clickedTab.dataset.tab).classList.add('active');
-        });
-        
-        const init = () => {
-            loadData();
-            populateMonthSelector();
-            const currentMonthKey = Object.keys(financialData).sort().reverse()[0];
-            if (currentMonthKey) {
-                monthSelector.value = currentMonthKey;
-                renderDashboard(currentMonthKey);
-            }
-        };
+            cancelBtn.addEventListener('click', closeModal);
+            modal.addEventListener('click', (e) => e.target === modal && closeModal());
+            
+            typeSelect.addEventListener('change', (e) => {
+                document.getElementById('category-wrapper').style.display = e.target.value === 'despesa' ? 'block' : 'none';
+                document.getElementById('installments-wrapper').style.display = e.target.value === 'despesa' ? 'block' : 'none';
+            });
+            
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(form);
+                const data = Object.fromEntries(formData.entries());
+                
+                const transactionDate = new Date(data.date + 'T12:00:00'); // Use timezone neutral
+                if (!data.date) {
+                    alert("Por favor, selecione uma data para o lançamento.");
+                    return;
+                }
 
-        monthSelector.addEventListener('change', () => renderDashboard(monthSelector.value));
-        
-        init();
-    });
+                const monthsToSave = new Set();
+                const installmentPattern = /^(\d{1,2})\/(\d{1,2})$/;
+                const match = data.installments ? data.installments.match(installmentPattern) : null;
+
+                if (data.type === 'despesa' && match) { // Handle installments
+                    const currentInstallment = parseInt(match[1]);
+                    const totalInstallments = parseInt(match[2]);
+
+                    for (let i = currentInstallment; i <= totalInstallments; i++) {
+                        const installmentDate = new Date(transactionDate);
+                        installmentDate.setMonth(transactionDate.getMonth() + (i - currentInstallment));
+                        
+                        const year = installmentDate.getFullYear();
+                        const month = (installmentDate.getMonth() + 1).toString().padStart(2, '0');
+                        const monthKey = `${year}-${month}`;
+                        
+                        if (!financialData[monthKey]) {
+                            console.log(`Criando novo mês para parcela: ${monthKey}`);
+                            financialData[monthKey] = { receitas: [], despesas: {} };
+                        }
+                        
+                        const id = data.id ? parseInt(data.id) + (i - currentInstallment) : Date.now() + i;
+                        const category = data.category;
+                        if (!financialData[monthKey].despesas[category]) {
+                            financialData[monthKey].despesas[category] = [];
+                        }
+                        
+                        financialData[monthKey].despesas[category].push({ 
+                            id, 
+                            descricao: data.description, 
+                            valor: parseFloat(data.amount),
+                            parcelas: `${i}/${totalInstallments}`,
+                            pago: false // Future installments are not paid
+                        });
+                        monthsToSave.add(monthKey);
+                    }
+                } else { // Handle single transaction
+                    const monthKey = transactionDate.toISOString().slice(0, 7);
+                    if (!financialData[monthKey]) {
+                        console.log(`Criando novo mês: ${monthKey}`);
+                        financialData[monthKey] = { receitas: [], despesas: {} };
+                    }
+
+                    const id = data.id ? parseInt(data.id) : Date.now();
+                    
+                    if (data.id) { 
+                        Object.keys(financialData).forEach(mKey => {
+                            if(financialData[mKey].receitas) financialData[mKey].receitas = financialData[mKey].receitas.filter(item => item.id !== id);
+                            if(financialData[mKey].despesas) Object.keys(financialData[mKey].despesas).forEach(cat => {
+                               if(financialData[mKey].despesas[cat]) financialData[mKey].despesas[cat] = financialData[mKey].despesas[cat].filter(item => item.id !== id);
+                            });
+                        });
+                    }
+
+                    if(data.type === 'receita') {
+                        if(!financialData[monthKey].receitas) financialData[monthKey].receitas = [];
+                        financialData[monthKey].receitas.push({ id, descricao: data.description, valor: parseFloat(data.amount) });
+                    } else {
+                        const category = data.category;
+                        if(!financialData[monthKey].despesas) financialData[monthKey].despesas = {};
+                        if (!financialData[monthKey].despesas[category]) financialData[monthKey].despesas[category] = [];
+                        financialData[monthKey].despesas[category].push({ 
+                            id, 
+                            descricao: data.description, 
+                            valor: parseFloat(data.amount),
+                            parcelas: data.installments || '',
+                            pago: false // New expenses start as not paid
+                        });
+                    }
+                    monthsToSave.add(monthKey);
+                }
+                
+                for (const key of monthsToSave) {
+                    await saveMonthData(key);
+                }
+                closeModal();
+            });
+
+            deleteBtn.addEventListener('click', async () => {
+                const id = parseInt(document.getElementById('transaction-id').value);
+                if(!id) return;
+                
+                let monthKeyOfItem = null;
+                 Object.keys(financialData).forEach(mKey => {
+                    const monthData = financialData[mKey];
+                    const initialRecipeCount = (monthData.receitas || []).length;
+                    const initialExpenseCount = Object.values(monthData.despesas || {}).flat().length;
+
+                    if(monthData.receitas) monthData.receitas = monthData.receitas.filter(item => item.id !== id);
+                    if(monthData.despesas) Object.keys(monthData.despesas).forEach(cat => {
+                        if(monthData.despesas[cat]) monthData.despesas[cat] = monthData.despesas[cat].filter(item => item.id !== id);
+                    });
+
+                    const finalRecipeCount = (monthData.receitas || []).length;
+                    const finalExpenseCount = Object.values(monthData.despesas || {}).flat().length;
+
+                    if(initialRecipeCount > finalRecipeCount || initialExpenseCount > finalExpenseCount) {
+                        monthKeyOfItem = mKey;
+                    }
+                });
+
+                if (monthKeyOfItem) {
+                    await saveMonthData(monthKeyOfItem);
+                }
+                closeModal();
+            });
+            
+            const tabsContainer = document.getElementById('tabs');
+            tabsContainer.addEventListener('click', (e) => {
+                const clickedTab = e.target.closest('.tab-btn');
+                if (!clickedTab) return;
+                tabsContainer.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+                clickedTab.classList.add('active');
+                document.getElementById(clickedTab.dataset.tab).classList.add('active');
+            });
+            
+            monthSelector.addEventListener('change', () => renderDashboard(monthSelector.value));
+            
+            loadAndListen();
+        });
     </script>
 </body>
 </html>
